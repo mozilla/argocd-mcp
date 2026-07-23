@@ -127,7 +127,7 @@ func TestHandleToken_SwapsIdTokenToAccessToken(t *testing.T) {
 	}))
 	defer dex.Close()
 
-	handler := HandleToken(dex.URL, "argo-cd-cli")
+	handler := HandleToken(dex.URL, "argo-cd-cli", nil)
 	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader("grant_type=authorization_code&code=abc"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
@@ -158,7 +158,7 @@ func TestHandleToken_NoIdToken_NoSwap(t *testing.T) {
 	}))
 	defer dex.Close()
 
-	handler := HandleToken(dex.URL, "argo-cd-cli")
+	handler := HandleToken(dex.URL, "argo-cd-cli", nil)
 	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader("grant_type=authorization_code&code=abc"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
@@ -182,7 +182,7 @@ func TestHandleToken_InvalidJSON_ForwardsRawBody(t *testing.T) {
 	}))
 	defer dex.Close()
 
-	handler := HandleToken(dex.URL, "argo-cd-cli")
+	handler := HandleToken(dex.URL, "argo-cd-cli", nil)
 	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader("grant_type=authorization_code&code=abc"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
@@ -208,7 +208,7 @@ func TestHandleToken_ForwardsClientID(t *testing.T) {
 	}))
 	defer dex.Close()
 
-	handler := HandleToken(dex.URL, "my-client")
+	handler := HandleToken(dex.URL, "my-client", nil)
 	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader("grant_type=authorization_code&code=abc&client_id=attacker"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
@@ -229,7 +229,7 @@ func TestHandleToken_ForwardsDexError(t *testing.T) {
 	}))
 	defer dex.Close()
 
-	handler := HandleToken(dex.URL, "argo-cd-cli")
+	handler := HandleToken(dex.URL, "argo-cd-cli", nil)
 	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader("grant_type=authorization_code&code=bad"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
@@ -252,7 +252,7 @@ func TestHandleToken_DexUnreachable(t *testing.T) {
 	dexURL := dex.URL
 	dex.Close()
 
-	handler := HandleToken(dexURL, "argo-cd-cli")
+	handler := HandleToken(dexURL, "argo-cd-cli", nil)
 	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader("grant_type=authorization_code&code=abc"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()

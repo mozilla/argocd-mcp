@@ -9,13 +9,14 @@ import (
 	"net/http"
 
 	"github.com/matthisholleville/argocd-mcp/internal/httputil"
+	"github.com/matthisholleville/argocd-mcp/internal/iap"
 )
 
 // FetchAndParse fetches the ArgoCD Swagger spec and returns the parsed endpoints.
-func FetchAndParse(ctx context.Context, specURL, token string, tlsInsecure bool, logger *slog.Logger) ([]Endpoint, error) {
+func FetchAndParse(ctx context.Context, specURL, token string, tlsInsecure bool, iapInjector *iap.Injector, logger *slog.Logger) ([]Endpoint, error) {
 	logger.Info("fetching ArgoCD OpenAPI spec", slog.String("url", specURL))
 
-	raw, err := fetchSpec(ctx, specURL, token, tlsInsecure)
+	raw, err := fetchSpec(ctx, specURL, token, tlsInsecure, iapInjector)
 	if err != nil {
 		return nil, fmt.Errorf("fetch spec: %w", err)
 	}
@@ -29,14 +30,14 @@ func FetchAndParse(ctx context.Context, specURL, token string, tlsInsecure bool,
 	return endpoints, nil
 }
 
-func fetchSpec(ctx context.Context, specURL, token string, tlsInsecure bool) (json.RawMessage, error) {
+func fetchSpec(ctx context.Context, specURL, token string, tlsInsecure bool, iapInjector *iap.Injector) (json.RawMessage, error) {
 	// Timeout is governed by the ctx deadline passed by the caller.
 	client := &http.Client{
-		Transport: &http.Transport{
+		Transport: iapInjector.Wrap(&http.Transport{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: tlsInsecure, //nolint:gosec // Configurable via ARGOCD_TLS_INSECURE
 			},
-		},
+		}),
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, specURL, nil)

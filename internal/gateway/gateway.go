@@ -14,6 +14,7 @@ import (
 
 	"github.com/matthisholleville/argocd-mcp/internal/auth"
 	"github.com/matthisholleville/argocd-mcp/internal/httputil"
+	"github.com/matthisholleville/argocd-mcp/internal/iap"
 )
 
 // Gateway proxies API requests to ArgoCD.
@@ -26,18 +27,20 @@ type Gateway struct {
 
 // NewGateway creates a Gateway targeting the given ArgoCD instance.
 // When tlsInsecure is true, TLS certificate verification is skipped.
-func NewGateway(baseURL, staticToken string, tlsInsecure bool, logger *slog.Logger) *Gateway {
+// When iapInjector is non-nil, requests carry a Google IAP credential so they
+// pass the IAP fronting ArgoCD.
+func NewGateway(baseURL, staticToken string, tlsInsecure bool, iapInjector *iap.Injector, logger *slog.Logger) *Gateway {
 	return &Gateway{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		token:   staticToken,
 		logger:  logger,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
-			Transport: &http.Transport{
+			Transport: iapInjector.Wrap(&http.Transport{
 				TLSClientConfig: &tls.Config{
 					InsecureSkipVerify: tlsInsecure, //nolint:gosec // Configurable via ARGOCD_TLS_INSECURE
 				},
-			},
+			}),
 		},
 	}
 }

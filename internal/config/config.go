@@ -35,6 +35,12 @@ type Config struct {
 	OllamaURL string
 	// EmbeddingsModel is the Ollama embedding model name.
 	EmbeddingsModel string
+	// IAPAudience is the Google Cloud IAP audience. When non-empty, every
+	// server-to-server request to ArgoCD (spec fetch, Dex token exchange, API
+	// calls) is signed with a Google OIDC token in the Proxy-Authorization
+	// header so it passes the IAP fronting ArgoCD. Empty disables IAP support.
+	// Typically the IAP OAuth 2.0 client ID or the IAP-secured resource URL.
+	IAPAudience string
 	// TLSInsecure disables TLS certificate verification when connecting to ArgoCD.
 	// Defaults to false (secure). Set to true only when ArgoCD uses self-signed
 	// certificates that cannot be added to the trust store.
@@ -85,6 +91,7 @@ func Load() (*Config, error) {
 		AuthMode:          getEnvOrDefault("AUTH_MODE", "token"),
 		ServerBaseURL:     os.Getenv("SERVER_BASE_URL"),
 		DexClientID:       getEnvOrDefault("DEX_CLIENT_ID", "argo-cd-cli"),
+		IAPAudience:       os.Getenv("IAP_AUDIENCE"),
 		EmbeddingsEnabled: embeddingsEnabled,
 		OllamaURL:         getEnvOrDefault("OLLAMA_URL", "http://localhost:11434/api"),
 		EmbeddingsModel:   getEnvOrDefault("EMBEDDINGS_MODEL", "nomic-embed-text"),

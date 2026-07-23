@@ -17,6 +17,7 @@ import (
 	"github.com/matthisholleville/argocd-mcp/internal/auth"
 	"github.com/matthisholleville/argocd-mcp/internal/config"
 	"github.com/matthisholleville/argocd-mcp/internal/gateway"
+	"github.com/matthisholleville/argocd-mcp/internal/iap"
 	"github.com/matthisholleville/argocd-mcp/internal/openapi"
 	"github.com/matthisholleville/argocd-mcp/internal/toolgen"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -38,11 +39,22 @@ func Run(cfg *config.Config, version string) error {
 		logger.Warn("TLS certificate verification is DISABLED (ARGOCD_TLS_INSECURE=true)")
 	}
 
+	// IAP credential injector for server-to-server calls to an IAP-fronted
+	// ArgoCD. nil (disabled) when IAP_AUDIENCE is unset — callers handle nil.
+	iapInjector, err := iap.New(ctx, cfg.IAPAudience)
+	if err != nil {
+		logger.Error("failed to initialize Google IAP credentials", slog.String("error", err.Error()))
+		return fmt.Errorf("init IAP credentials: %w", err)
+	}
+	if cfg.IAPAudience != "" {
+		logger.Info("Google IAP injection enabled", slog.String("audience", cfg.IAPAudience))
+	}
+
 	const fetchSpecTimeout = 30 * time.Second
 	fetchCtx, fetchCancel := context.WithTimeout(ctx, fetchSpecTimeout)
 	defer fetchCancel()
 
-	endpoints, err := openapi.FetchAndParse(fetchCtx, cfg.SpecURL, cfg.ArgoCDToken, cfg.TLSInsecure, logger)
+	endpoints, err := openapi.FetchAndParse(fetchCtx, cfg.SpecURL, cfg.ArgoCDToken, cfg.TLSInsecure, iapInjector, logger)
 	if err != nil {
 		logger.Error("failed to load ArgoCD spec", slog.String("url", cfg.SpecURL), slog.String("error", err.Error()))
 		return fmt.Errorf("load ArgoCD spec: %w", err)
@@ -81,7 +93,7 @@ func Run(cfg *config.Config, version string) error {
 	}
 
 	// 3. Build the gateway.
-	gw := gateway.NewGateway(cfg.ArgoCDBaseURL, cfg.ArgoCDToken, cfg.TLSInsecure, logger)
+	gw := gateway.NewGateway(cfg.ArgoCDBaseURL, cfg.ArgoCDToken, cfg.TLSInsecure, iapInjector, logger)
 
 	// 4. Create MCP server.
 	mcpServer := server.NewMCPServer(
@@ -150,7 +162,7 @@ func Run(cfg *config.Config, version string) error {
 	// 5. Start.
 	switch cfg.Transport {
 	case "http":
-		return runHTTP(ctx, mcpServer, cfg, logger)
+		return runHTTP(ctx, mcpServer, cfg, iapInjector, logger)
 	default:
 		return runStdio(mcpServer, logger)
 	}
@@ -191,7 +203,7 @@ func runStdio(s *server.MCPServer, logger *slog.Logger) error {
 	return server.ServeStdio(s)
 }
 
-func runHTTP(ctx context.Context, s *server.MCPServer, cfg *config.Config, logger *slog.Logger) error {
+func runHTTP(ctx context.Context, s *server.MCPServer, cfg *config.Config, iapInjector *iap.Injector, logger *slog.Logger) error {
 	httpSrv := server.NewStreamableHTTPServer(s,
 		server.WithStateLess(true),
 		server.WithEndpointPath("/mcp"),
@@ -207,7 +219,7 @@ func runHTTP(ctx context.Context, s *server.MCPServer, cfg *config.Config, logge
 	})
 
 	if cfg.AuthMode == "oauth" {
-		mountOAuth(mux, httpSrv, cfg, logger)
+		mountOAuth(mux, httpSrv, cfg, iapInjector, logger)
 	} else {
 		mux.Handle("/mcp", httpSrv)
 		logger.Info("token mode — /mcp is unauthenticated, using static ARGOCD_TOKEN")
@@ -241,7 +253,7 @@ func runHTTP(ctx context.Context, s *server.MCPServer, cfg *config.Config, logge
 	}
 }
 
-func mountOAuth(mux *http.ServeMux, httpSrv http.Handler, cfg *config.Config, logger *slog.Logger) {
+func mountOAuth(mux *http.ServeMux, httpSrv http.Handler, cfg *config.Config, iapInjector *iap.Injector, logger *slog.Logger) {
 	dexBase := strings.TrimRight(cfg.ArgoCDBaseURL, "/") + "/api/dex"
 
 	mux.HandleFunc("GET /.well-known/oauth-authorization-server", auth.HandleAuthServerMetadata(cfg.ServerBaseURL))
@@ -249,7 +261,7 @@ func mountOAuth(mux *http.ServeMux, httpSrv http.Handler, cfg *config.Config, lo
 	mux.HandleFunc("GET /.well-known/oauth-protected-resource/mcp", auth.HandleProtectedResourceMetadata(cfg.ServerBaseURL))
 	mux.HandleFunc("POST /register", auth.HandleRegister(cfg.DexClientID, logger))
 	mux.HandleFunc("GET /authorize", auth.HandleAuthorize(dexBase+"/auth", cfg.DexClientID))
-	mux.HandleFunc("POST /token", auth.HandleToken(dexBase+"/token", cfg.DexClientID))
+	mux.HandleFunc("POST /token", auth.HandleToken(dexBase+"/token", cfg.DexClientID, iapInjector))
 
 	authMiddleware := auth.NewPassthroughMiddleware(cfg.ServerBaseURL, logger)
 	mux.Handle("/mcp", authMiddleware(httpSrv))

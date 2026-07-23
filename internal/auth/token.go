@@ -8,14 +8,20 @@ import (
 	"strings"
 
 	"github.com/matthisholleville/argocd-mcp/internal/httputil"
+	"github.com/matthisholleville/argocd-mcp/internal/iap"
 )
 
 // HandleToken serves POST /token.
 // Proxies the token exchange to ArgoCD's Dex token endpoint.
 // Swaps the id_token into the access_token field because ArgoCD validates
 // the id_token (not the access_token) as the Bearer token.
-func HandleToken(dexTokenURL, clientID string) http.HandlerFunc {
-	httpClient := &http.Client{Timeout: 15 * time.Second}
+// When iapInjector is non-nil, the proxied request carries a Google IAP
+// credential so it passes the IAP fronting ArgoCD's Dex endpoint.
+func HandleToken(dexTokenURL, clientID string, iapInjector *iap.Injector) http.HandlerFunc {
+	httpClient := &http.Client{
+		Timeout:   15 * time.Second,
+		Transport: iapInjector.Wrap(nil),
+	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {

@@ -203,6 +203,28 @@ ArgoCD auto-registers `argo-cd-cli` at startup and prepends it to the client lis
 
 ---
 
+## Google Cloud IAP (optional)
+
+If your ArgoCD instance sits behind [Google Cloud Identity-Aware Proxy](https://cloud.google.com/iap), every request from the MCP server to ArgoCD is intercepted by IAP and rejected with `401 Invalid IAP credentials: empty token` unless it carries a Google-signed OIDC token. This is separate from the ArgoCD/Dex auth — IAP guards the network edge, ArgoCD guards the API.
+
+Set `IAP_AUDIENCE` to enable IAP support. The server then signs **every** server-to-server call (spec fetch, Dex token exchange in OAuth mode, and all ArgoCD API calls) with a Google OIDC token in the `Proxy-Authorization` header. IAP validates and strips that header, and forwards the `Authorization` header (your ArgoCD token or Dex id_token) to ArgoCD untouched.
+
+```bash
+docker run -d \
+  -e ARGOCD_BASE_URL=https://argocd.example.com \
+  -e ARGOCD_TOKEN=xxx \
+  -e IAP_AUDIENCE=1234567890-abc.apps.googleusercontent.com \
+  -e GOOGLE_APPLICATION_CREDENTIALS=/creds/sa.json \
+  -v /path/to/sa.json:/creds/sa.json:ro \
+  ...
+```
+
+- **`IAP_AUDIENCE`** — the value IAP expects in the token's `aud` claim. Usually the IAP OAuth 2.0 client ID (ends in `.apps.googleusercontent.com`), or the IAP-secured resource URL, depending on your IAP configuration.
+- **Credentials** — resolved via [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials): a service-account key (`GOOGLE_APPLICATION_CREDENTIALS`), GKE workload identity, or the GCE metadata server. The service account needs the **IAP-secured Web App User** role on the resource.
+- Works with both `AUTH_MODE=token` and `AUTH_MODE=oauth`. Leave `IAP_AUDIENCE` unset to disable (default).
+
+---
+
 ## Semantic Search (optional)
 
 Enable Ollama-powered vector search for better results on natural language queries:
@@ -406,6 +428,8 @@ Set `AUDIT_LOG=false` to disable.
 | `MCP_TRANSPORT` | No | `stdio` | `stdio` or `http` |
 | `MCP_ADDR` | No | `:8080` | HTTP listen address |
 | `ARGOCD_TLS_INSECURE` | No | `false` | Skip TLS certificate verification (set `true` for self-signed certs) |
+| `IAP_AUDIENCE` | No | | Google Cloud IAP audience. Set when ArgoCD is behind IAP (see below) |
+| `GOOGLE_APPLICATION_CREDENTIALS` | No | | Service-account key path for IAP; falls back to workload identity / metadata server |
 | `TOOL_MODE` | No | `search` | `search` (2 meta-tools) or `generated` (1 tool per endpoint) |
 | `DISABLE_WRITE` | No | `false` | Block all write operations (POST, PUT, PATCH, DELETE) |
 | `ALLOWED_RESOURCES` | No | | Comma-separated list of resource tags to expose (e.g. `ApplicationService,VersionService`) |
