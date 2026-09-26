@@ -34,6 +34,7 @@ type ToolOptions struct {
 func RegisterMCPTools(srv *server.MCPServer, opts ToolOptions, searcher Searcher, gw *Gateway, allowed *openapi.AllowedEndpoints, limiter ratelimit.Limiter, auditor *audit.Logger) {
 	srv.AddTool(searchTool(opts), handleSearch(searcher, auditor))
 	srv.AddTool(executeTool(opts), handleExecute(gw, opts.DisableWrite, allowed, limiter, auditor))
+	RegisterDiffTool(srv, gw, allowed, limiter, auditor)
 }
 
 func searchTool(opts ToolOptions) mcp.Tool {

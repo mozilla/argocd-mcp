@@ -344,9 +344,37 @@ Tools are annotated with MCP hints (`readOnlyHint`, `destructiveHint`, `idempote
 
 ---
 
+## Application Diff (`diff_application`)
+
+Both tool modes also register `diff_application`: what syncing an Application to a git revision would change, like `argocd app diff APP --revision REV`. It uses Argo CD's own diff library with the caller's credentials. Keep the `argo-cd` version in `go.mod` in step with your Argo CD servers.
+
+| Argument | Description |
+|----------|-------------|
+| `app` (required) | Application name |
+| `revision` (required) | Branch, tag, or commit SHA |
+| `app_namespace` | Application namespace, if not the controller's |
+| `mode` | `live` (default): what a sync would change, drift included. `pr`: only what the revision changes |
+| `format` | `diff` (default) or `json` with per-field changes |
+| `stat` | Changed resources only, no diff bodies |
+
+----------|-------------|
+| `app` (required) | Application name |
+| `revision` (required) | Branch, tag, or commit SHA in the app's source repo |
+| `app_namespace` | Application namespace, if apps live outside the controller namespace |
+| `mode` | `live` (default): live vs. predicted state, drift included, like the CLI. `pr`: only what the revision changes relative to the current target; drifted resources are listed, with their drift left out, but the revision's changes to them still show |
+| `format` | `diff` (default): unified diff per resource. `json`: structured result with per-field changes as JSON Pointer paths |
+| `stat` | Summary only, without diff bodies |
+| `context` | Context lines per hunk (default 3) |
+
+Each result starts with the sync policy (`automated`, `prune`, `selfHeal`), plus a note when removed resources would be left orphaned because prune is off. The tool is read-only, and it honors `ALLOWED_RESOURCES`, rate limiting, and audit logging.
+
+The diff comes from the `github.com/argoproj/argo-cd/v3` library, whose version is pinned in `go.mod`. Keep it in step with the Argo CD servers you connect to, so results match their CLI.
+
+---
+
 ## Rate Limiting (optional)
 
-Protect ArgoCD from excessive API calls by setting `RATE_LIMIT`. Only `execute_operation` is rate limited — search is local and not affected.
+Protect ArgoCD from excessive API calls by setting `RATE_LIMIT`. `execute_operation` and `diff_application` are rate limited — search is local and not affected.
 
 ```bash
 RATE_LIMIT=10              # 10 requests/sec per user
@@ -403,7 +431,7 @@ Audit logging is **enabled by default**. Every `search_operations` and `execute_
 ```
 
 Each entry includes:
-- **tool** — `search_operations` or `execute_operation`
+- **tool** — `search_operations`, `execute_operation`, or `diff_application`
 - **user** — email from the OAuth token (empty in static token mode)
 - **method / path** — the ArgoCD API call (execute) or **query** (search)
 - **status_code** — upstream HTTP response code

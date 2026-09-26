@@ -136,6 +136,7 @@ func Run(cfg *config.Config, version string) error {
 		for _, gt := range generated {
 			mcpServer.AddTool(gt.Tool, gt.Handler)
 		}
+		gateway.RegisterDiffTool(mcpServer, gw, allowed, limiter, auditor)
 		logger.Info("generated tools mode",
 			slog.Int("tools_registered", len(generated)),
 			slog.Int("endpoints_total", len(endpoints)),
